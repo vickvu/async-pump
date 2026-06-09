@@ -120,16 +120,28 @@ await writer.write();
 #### Options
 
 ```ts
-new AsyncIteratorWriter<T>({
-    source, // AsyncIterable<T> — the data to pump
-    destination, // WritableStream<T> | Node writable
+new AsyncIteratorWriter<SRC = Uint8Array, DST = SRC>({
+    source, // AsyncIterable<SRC> — the data to pump
+    destination, // WritableStream<DST> | Node writable
+    transform, // optional — (src: SRC, signal?: AbortSignal) => DST | null | undefined | Promise<…>
     shouldEnd, // boolean (default true) — close/end the destination when the source is exhausted
     signal, // AbortSignal — cancel the pump
 });
 ```
 
+- **`transform`** _(optional)_ — maps each source item to a chunk before writing; a `null`/`undefined` result (sync or async) skips it, and the `signal` is forwarded to it. This folds the common "transform then write to a stream" case into the writer, so you don't have to wire up a separate [`AsyncIteratorTransformer`](#asynciteratortransformer). Omit it to write items through unchanged.
 - **`shouldEnd`** — when `true` (default) the destination is closed/ended after the last chunk. Set to `false` to leave the destination open (e.g. when writing several sources to the same sink).
 - **`signal`** — aborting interrupts the pump. The source iterator's `return()` is invoked, and on the error path the destination is destroyed/closed to avoid hanging.
+
+```ts
+// Pump a stream of records straight into a file, serializing inline.
+const encoder = new TextEncoder();
+await new AsyncIteratorWriter<LogRecord, Uint8Array>({
+    source: records,
+    destination: createWriteStream('out.log'),
+    transform: (r) => (r.level === 'debug' ? null : encoder.encode(`${r.level}: ${r.msg}\n`)),
+}).write();
+```
 
 Backpressure is respected throughout: for Web streams the writer awaits `writer.ready`; for Node streams it waits for the `drain` event whenever `write()` returns `false`.
 

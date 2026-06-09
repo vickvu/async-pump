@@ -130,6 +130,66 @@ describe('AsyncIteratorWriter', function () {
         });
     });
 
+    describe('transform option', function () {
+        it('maps each item before writing', async function () {
+            const sink = makeNodeSink();
+            const writer = new AsyncIteratorWriter<string, Buffer>({
+                source: fromArray(['a', 'bb', 'ccc']),
+                destination: sink.writable,
+                transform: (s) => Buffer.from(String(s.length)),
+            });
+
+            await writer.write();
+
+            expect(Buffer.concat(sink.chunks).toString()).to.equal('123');
+        });
+
+        it('skips items whose transform returns null', async function () {
+            const sink = makeNodeSink();
+            const writer = new AsyncIteratorWriter<number, Buffer>({
+                source: fromArray([1, 2, 3, 4]),
+                destination: sink.writable,
+                transform: (n) => (n % 2 === 0 ? Buffer.from(String(n)) : null),
+            });
+
+            await writer.write();
+
+            expect(Buffer.concat(sink.chunks).toString()).to.equal('24');
+        });
+
+        it('supports an async transform', async function () {
+            const sink = makeWebSink<string>();
+            const writer = new AsyncIteratorWriter<number, string>({
+                source: fromArray([1, 2]),
+                destination: sink.stream,
+                transform: (n) => Promise.resolve(`#${String(n)}`),
+            });
+
+            await writer.write();
+
+            expect(sink.chunks).to.deep.equal(['#1', '#2']);
+        });
+
+        it('forwards the abort signal to the transform', async function () {
+            const sink = makeNodeSink();
+            const controller = new AbortController();
+            let received: AbortSignal | undefined;
+            const writer = new AsyncIteratorWriter<Buffer, Buffer>({
+                source: fromArray([Buffer.from('x')]),
+                destination: sink.writable,
+                transform: (chunk, signal) => {
+                    received = signal;
+                    return chunk;
+                },
+                signal: controller.signal,
+            });
+
+            await writer.write();
+
+            expect(received).to.equal(controller.signal);
+        });
+    });
+
     describe('abort signal', function () {
         it('rejects immediately when the signal is already aborted', async function () {
             const sink = makeNodeSink();
