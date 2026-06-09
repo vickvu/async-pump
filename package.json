@@ -1,6 +1,6 @@
 {
     "name": "async-pump",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "description": "Zero-dependency primitives for bridging AsyncIterable with Node.js and Web streams, with backpressure and abort support.",
     "author": "Vick Vu",
     "contributors": [],
