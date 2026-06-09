@@ -133,31 +133,107 @@ new AsyncIteratorWriter<T>({
 
 Backpressure is respected throughout: for Web streams the writer awaits `writer.ready`; for Node streams it waits for the `drain` event whenever `write()` returns `false`.
 
-## Composing the two
+### `AsyncIteratorTransformer`
 
-`AsyncIteratorQueue` is an `AsyncIterable`, so it plugs straight into `AsyncIteratorWriter` as a `source` — letting an imperative producer feed a stream destination with end-to-end backpressure:
+Lazily map an `AsyncIterable<SRC>` into an `AsyncIterable<DST>`. The transform may be sync or async, and returning `null`/`undefined` **drops** the item — so one function both maps and filters.
 
 ```ts
-const queue = new AsyncIteratorQueue<Uint8Array>();
+import { AsyncIteratorTransformer } from 'async-pump';
 
+async function* numbers() {
+    yield 1;
+    yield 2;
+    yield 3;
+    yield 4;
+}
+
+// Keep evens, square them; everything else is skipped.
+const squaredEvens = new AsyncIteratorTransformer({
+    source: numbers(),
+    transform: (n) => (n % 2 === 0 ? n * n : null),
+});
+
+for await (const value of squaredEvens) {
+    console.log(value); // 4, then 16
+}
+```
+
+#### Options
+
+```ts
+new AsyncIteratorTransformer<SRC = Uint8Array, DST = SRC>({
+    source, // AsyncIterable<SRC> — the items to transform
+    transform, // optional — (src: SRC, signal?: AbortSignal) => DST | null | undefined | Promise<DST | null | undefined>
+    signal, // AbortSignal — cancels the transform
+});
+```
+
+- **`transform`** _(optional)_ — maps each item; a `null`/`undefined` result (sync or async) skips it. The active `signal` is passed as the second argument so the callback can wire its own async work (a `fetch`, a timeout) to the same cancellation. **Omit it** for an identity pass-through — a handy way to wrap any `AsyncIterable` with abort support.
+- **`signal`** — aborting interrupts a pull or a transform in flight (the iteration rejects with the abort reason) and tears the source down.
+
+The type parameters default to `SRC = Uint8Array` and `DST = SRC`, so a byte pass-through is just `new AsyncIteratorTransformer({ source, signal })`.
+
+The result is lazy and backpressure-friendly — it pulls the next source item only when the consumer asks — and forwards early termination (a `break` in `for await`) to the source iterator's `return()`.
+
+## Composing a pipeline
+
+All three primitives are `AsyncIterable`-shaped, so they chain into a single backpressured pipeline:
+
+```
+your code → AsyncIteratorQueue → AsyncIteratorTransformer → AsyncIteratorWriter → stream
+```
+
+An imperative producer pushes records into the queue, the transformer maps/filters them on the way through, and the writer pumps the result into a stream — with backpressure flowing all the way back: when the stream is full the writer stops pulling, the transformer stops pulling, and `queue.write()` parks.
+
+```ts
+import { AsyncIteratorQueue, AsyncIteratorTransformer, AsyncIteratorWriter } from 'async-pump';
+import { createWriteStream } from 'node:fs';
+
+interface LogRecord {
+    level: string;
+    msg: string;
+}
+
+// 1. Imperative producer.
+const records = new AsyncIteratorQueue<LogRecord>();
+
+// 2. Serialize each record to a line of bytes — and drop debug records.
+const encoder = new TextEncoder();
+const lines = new AsyncIteratorTransformer({
+    source: records,
+    transform: (record) => (record.level === 'debug' ? null : encoder.encode(`${record.level}: ${record.msg}\n`)),
+});
+
+// 3. Pump the bytes into a writable stream.
 const writer = new AsyncIteratorWriter({
-    source: queue,
-    destination: createWriteStream('out.bin'),
+    source: lines,
+    destination: createWriteStream('out.log'),
 });
 
 const pump = writer.write();
 
-await queue.write(chunk1);
-await queue.write(chunk2);
-queue.end();
+await records.write({ level: 'info', msg: 'started' });
+await records.write({ level: 'debug', msg: 'noisy' }); // skipped by the transform
+await records.write({ level: 'error', msg: 'boom' });
+records.end();
 
-await pump;
+await pump; // out.log now contains "info: started\nerror: boom\n"
 ```
+
+Pass one shared `AbortSignal` to the queue, the transformer, and the writer to cancel the whole pipeline at once.
 
 ## API summary
 
 ```ts
-import { AsyncIteratorQueue, type AsyncIteratorQueueOptions, AsyncIteratorWriter, type AsyncIteratorWriterOptions } from 'async-pump';
+import {
+    AsyncIteratorQueue,
+    type AsyncIteratorQueueOptions,
+    AsyncIteratorWriter,
+    type AsyncIteratorWriterOptions,
+    AsyncIteratorTransformer,
+    type AsyncIteratorTransformerOptions,
+    type AsyncIteratorTransformFn,
+} from 'async-pump';
 ```
 
 ## License
