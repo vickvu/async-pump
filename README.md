@@ -2,10 +2,11 @@
 
 > Zero-dependency primitives for bridging `AsyncIterable` with Node.js and Web streams, with backpressure and abort support.
 
-`async-pump` provides two small, cross-runtime building blocks for streaming pipelines:
+`async-pump` provides three small, cross-runtime building blocks for streaming pipelines:
 
 - **`AsyncIteratorQueue`** — a backpressured, abortable `AsyncIterable<T>` queue. Push chunks with a promise-returning `write()` that respects a high-water mark, and consume them with `for await`.
-- **`AsyncIteratorWriter`** — pumps any `AsyncIterable<T>` into a Node.js `Writable` **or** a Web API `WritableStream`, handling backpressure, lifecycle, and cancellation for you.
+- **`AsyncIteratorWriter`** — pumps any `AsyncIterable<SRC>` into a Node.js `Writable` **or** a Web API `WritableStream` (optionally transforming items inline), handling backpressure, lifecycle, and cancellation for you.
+- **`AsyncIteratorTransformer`** — lazily map/filter an `AsyncIterable<SRC>` into an `AsyncIterable<DST>` (returning `null`/`undefined` drops the item), with full `AbortSignal` support.
 
 It works identically in Node.js (with native `Buffer`/`Uint8Array` support) and the browser, and ships with zero runtime dependencies. Both raw-byte and object streams are supported.
 
@@ -189,16 +190,16 @@ The result is lazy and backpressure-friendly — it pulls the next source item o
 
 ## Composing a pipeline
 
-All three primitives are `AsyncIterable`-shaped, so they chain into a single backpressured pipeline:
+The primitives are all `AsyncIterable`-shaped, so they chain into a single backpressured pipeline. Since the writer can transform inline, the common shape is just two pieces plus the sink:
 
 ```
-your code → AsyncIteratorQueue → AsyncIteratorTransformer → AsyncIteratorWriter → stream
+your code → AsyncIteratorQueue → AsyncIteratorWriter (transform) → stream
 ```
 
-An imperative producer pushes records into the queue, the transformer maps/filters them on the way through, and the writer pumps the result into a stream — with backpressure flowing all the way back: when the stream is full the writer stops pulling, the transformer stops pulling, and `queue.write()` parks.
+An imperative producer pushes records into the queue; the writer maps/filters each one and pumps the result into a stream — with backpressure flowing all the way back: when the stream is full the writer stops pulling and `queue.write()` parks.
 
 ```ts
-import { AsyncIteratorQueue, AsyncIteratorTransformer, AsyncIteratorWriter } from 'async-pump';
+import { AsyncIteratorQueue, AsyncIteratorWriter } from 'async-pump';
 import { createWriteStream } from 'node:fs';
 
 interface LogRecord {
@@ -209,17 +210,12 @@ interface LogRecord {
 // 1. Imperative producer.
 const records = new AsyncIteratorQueue<LogRecord>();
 
-// 2. Serialize each record to a line of bytes — and drop debug records.
+// 2. Serialize each record to a line of bytes (dropping debug records) and pump it into a file.
 const encoder = new TextEncoder();
-const lines = new AsyncIteratorTransformer({
+const writer = new AsyncIteratorWriter<LogRecord, Uint8Array>({
     source: records,
-    transform: (record) => (record.level === 'debug' ? null : encoder.encode(`${record.level}: ${record.msg}\n`)),
-});
-
-// 3. Pump the bytes into a writable stream.
-const writer = new AsyncIteratorWriter({
-    source: lines,
     destination: createWriteStream('out.log'),
+    transform: (record) => (record.level === 'debug' ? null : encoder.encode(`${record.level}: ${record.msg}\n`)),
 });
 
 const pump = writer.write();
@@ -232,7 +228,7 @@ records.end();
 await pump; // out.log now contains "info: started\nerror: boom\n"
 ```
 
-Pass one shared `AbortSignal` to the queue, the transformer, and the writer to cancel the whole pipeline at once.
+Pass one shared `AbortSignal` to both the queue and the writer to cancel the whole pipeline at once. Need the transformed items somewhere other than a single writable — to fan out, or feed another consumer? Drop a standalone `AsyncIteratorTransformer` in as a middle stage.
 
 ## API summary
 
