@@ -1,0 +1,96 @@
+{
+    "name": "async-pump",
+    "version": "1.0.0",
+    "description": "Zero-dependency primitives for bridging AsyncIterable with Node.js and Web streams, with backpressure and abort support.",
+    "author": "Vick Vu",
+    "contributors": [],
+    "keywords": [
+        "async-iterator",
+        "asynciterable",
+        "async-iterable",
+        "stream",
+        "streams",
+        "web-streams",
+        "writablestream",
+        "writable",
+        "backpressure",
+        "abortsignal",
+        "abortable",
+        "queue",
+        "pipe",
+        "pump",
+        "nodejs",
+        "browser",
+        "uint8array",
+        "zero-dependency",
+        "typescript"
+    ],
+    "homepage": "https://github.com/vickvu/async-pump#readme",
+    "bugs": {
+        "url": "https://github.com/vickvu/async-pump/issues"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/vickvu/async-pump.git"
+    },
+    "license": "MIT",
+    "engines": {
+        "node": ">=18"
+    },
+    "type": "module",
+    "main": "./dist/index.cjs",
+    "module": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "imports": {
+        "#SRC/*.ts": "./src/*.ts"
+    },
+    "exports": {
+        ".": {
+            "import": {
+                "types": "./dist/index.d.ts",
+                "default": "./dist/index.js"
+            },
+            "require": {
+                "types": "./dist/index.d.cts",
+                "default": "./dist/index.cjs"
+            }
+        }
+    },
+    "scripts": {
+        "build": "tsup",
+        "typecheck": "tsc --noEmit",
+        "lint": "eslint .",
+        "lint:fix": "eslint . --fix",
+        "prepublishOnly": "npm run build",
+        "prettier": "prettier --check .",
+        "prettier:fix": "prettier --write .",
+        "pretest": "npm run prettier && npm run lint && npm run typecheck",
+        "test": "c8 mocha"
+    },
+    "files": [
+        "dist"
+    ],
+    "devDependencies": {
+        "@eslint/js": "^10.0.1",
+        "@types/chai": "^5.2.3",
+        "@types/mocha": "^10.0.10",
+        "@types/node": "^25.9.2",
+        "c8": "^11.0.0",
+        "chai": "^6.2.2",
+        "eslint": "^10.4.1",
+        "eslint-config-prettier": "^10.1.8",
+        "eslint-plugin-mocha": "^11.3.0",
+        "mocha": "^11.7.6",
+        "pino": "^10.3.1",
+        "prettier": "^3.8.3",
+        "tsup": "^8.5.1",
+        "tsx": "^4.22.4",
+        "typescript": "^6.0.3",
+        "typescript-eslint": "^8.61.0"
+    },
+    "overrides": {
+        "c8": {
+            "yargs": "^18.0.0"
+        }
+    }
+}

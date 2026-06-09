@@ -1,0 +1,7 @@
+{
+    "all": true,
+    "cache": false,
+    "include": ["src/**/*"],
+    "exclude": ["test/**/*", "src/index.ts"],
+    "reporter": ["text", "text-summary"]
+}

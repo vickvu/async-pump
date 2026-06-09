@@ -1,0 +1,28 @@
+name: Publish
+on:
+    push:
+        tags:
+            - v*.*.*
+permissions:
+    id-token: write # Required for OIDC
+    contents: read
+
+jobs:
+    publish:
+        runs-on: ubuntu-latest
+        environment: release # pauses for a required reviewer before publishing
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v6
+            - name: Setup Node.js with npmjs
+              uses: actions/setup-node@v6
+              with:
+                  node-version: 24
+                  registry-url: 'https://registry.npmjs.org'
+                  cache: 'npm'
+            - name: Install NPM Packages
+              run: npm ci
+            - name: Run Tests
+              run: npm test
+            - name: Publish to npmjs
+              run: npm publish --provenance
